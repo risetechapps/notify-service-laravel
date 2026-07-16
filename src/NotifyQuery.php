@@ -559,7 +559,7 @@ class ServerCampaignQuery
      */
     public function cancel(?string $id = null): array
     {
-        $id = $id ?? $this->id;
+        $id ??= $this->id;
 
         if ($id === null) {
             return ['status' => false, 'message' => 'Campaign id is required to cancel.', 'current_status' => null, 'http' => 0];
@@ -732,7 +732,7 @@ class ServerSmsQuery
      */
     public function cancel(?string $id = null): array
     {
-        $id = $id ?? $this->id;
+        $id ??= $this->id;
 
         if ($id === null) {
             return ['status' => false, 'message' => 'SMS id is required to cancel.', 'current_status' => null, 'http' => 0];
@@ -844,7 +844,7 @@ class ServerMailQuery
      */
     public function cancel(?string $id = null): array
     {
-        $id = $id ?? $this->id;
+        $id ??= $this->id;
 
         if ($id === null) {
             return ['status' => false, 'message' => 'Email id is required to cancel.', 'notification_id' => null, 'current_status' => null, 'http' => 0];
@@ -957,7 +957,7 @@ class ServerPushQuery
      */
     public function cancel(?string $id = null): array
     {
-        $id = $id ?? $this->id;
+        $id ??= $this->id;
 
         if ($id === null) {
             return ['status' => false, 'message' => 'Push id is required to cancel.', 'current_status' => null, 'http' => 0];
@@ -1065,7 +1065,7 @@ class ServerApnsQuery
      */
     public function cancel(?string $id = null): array
     {
-        $id = $id ?? $this->id;
+        $id ??= $this->id;
 
         if ($id === null) {
             return ['status' => false, 'message' => 'APNs id is required to cancel.', 'current_status' => null, 'http' => 0];
@@ -1179,7 +1179,7 @@ class ServerTelegramQuery
      */
     public function cancel(?string $id = null): array
     {
-        $id = $id ?? $this->id;
+        $id ??= $this->id;
 
         if ($id === null) {
             return ['status' => false, 'message' => 'Telegram id is required to cancel.', 'current_status' => null, 'http' => 0];
@@ -1362,7 +1362,7 @@ class ServerSlackQuery
      */
     public function cancel(?string $id = null): array
     {
-        $id = $id ?? $this->id;
+        $id ??= $this->id;
 
         if ($id === null) {
             return ['status' => false, 'message' => 'Slack id is required to cancel.', 'current_status' => null, 'http' => 0];
@@ -1517,7 +1517,7 @@ class ServerDiscordQuery
      */
     public function cancel(?string $id = null): array
     {
-        $id = $id ?? $this->id;
+        $id ??= $this->id;
 
         if ($id === null) {
             return ['status' => false, 'message' => 'Discord id is required to cancel.', 'current_status' => null, 'http' => 0];
@@ -1668,7 +1668,7 @@ class ServerTeamsQuery
      */
     public function cancel(?string $id = null): array
     {
-        $id = $id ?? $this->id;
+        $id ??= $this->id;
 
         if ($id === null) {
             return ['status' => false, 'message' => 'Teams id is required to cancel.', 'current_status' => null, 'http' => 0];
@@ -1776,7 +1776,7 @@ class ServerWebSocketQuery
      */
     public function cancel(?string $id = null): array
     {
-        $id = $id ?? $this->id;
+        $id ??= $this->id;
 
         if ($id === null) {
             return ['status' => false, 'message' => 'WebSocket id is required to cancel.', 'current_status' => null, 'http' => 0];
@@ -1884,7 +1884,7 @@ class ServerWebhookQuery
      */
     public function cancel(?string $id = null): array
     {
-        $id = $id ?? $this->id;
+        $id ??= $this->id;
 
         if ($id === null) {
             return ['status' => false, 'message' => 'Webhook id is required to cancel.', 'notification_id' => null, 'current_status' => null, 'http' => 0];

@@ -10,14 +10,12 @@ class NotifySendingEvent
 {
     use Dispatchable;
 
-    public $notifiable;
     public $notification;
 
     public $channel;
 
-    public function __construct($notifiable, Notification $notification, string $channel)
+    public function __construct(public $notifiable, Notification $notification, string $channel)
     {
-        $this->notifiable = $notifiable;
         $this->notification = $notification;
         $this->channel = $channel;
     }

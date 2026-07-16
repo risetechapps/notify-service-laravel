@@ -53,7 +53,7 @@ class EmailTable
 
     public function toArray(): array
     {
-        $rows = array_map(fn (array $row) => $this->normalizeRow($row), $this->rows);
+        $rows = array_map($this->normalizeRow(...), $this->rows);
 
         $table = [
             'rows' => $rows,

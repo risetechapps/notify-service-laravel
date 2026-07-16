@@ -16,13 +16,12 @@ class NotifyServiceProvider extends ServiceProvider
         $this->registerRoutes();
     }
 
+    #[\Override]
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__ . '/../config/config.php', 'notify');
 
-        $this->app->singleton(Notify::class, function () {
-            return new Notify();
-        });
+        $this->app->singleton(Notify::class, fn() => new Notify());
     }
 
     protected function registerChannels(): void
