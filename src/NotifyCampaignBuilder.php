@@ -487,8 +487,20 @@ class NotifyCampaignBuilder
             'credentials' => $this->credentials,
             'webhook_url' => $webhookUrl,
             'rate_per_minute' => $this->ratePerMinute !== 60 ? $this->ratePerMinute : null,
-            'scheduled_at' => $this->scheduledAt,
+            'scheduled_at' => $this->buildScheduledAt(),
             'tag' => $this->tag,
         ], fn($v) => !is_null($v));
+    }
+
+    protected function buildScheduledAt(): ?string
+    {
+        if ($this->scheduledAt === null) {
+            return null;
+        }
+
+        $timezone = config('app.timezone', 'UTC');
+
+        return \Carbon\Carbon::parse($this->scheduledAt, $timezone)
+            ->format('Y-m-d\TH:i:sP');
     }
 }
