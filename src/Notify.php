@@ -10,6 +10,6 @@ class Notify
      * Ponto único de definição — alterado apenas aqui, na fonte do package.
      * Não exposto na config para impedir sobrescrita pelo usuário final.
      */
-//    public const BASE_URL = 'https://notifykit.app.br';
-    public const BASE_URL = 'https://notify.risetech.dev.br';
+    public const BASE_URL = 'https://notifykit.app.br';
+//    public const BASE_URL = 'https://notify.risetech.dev.br';
 }

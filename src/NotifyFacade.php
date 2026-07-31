@@ -3,19 +3,14 @@
 namespace RiseTechApps\Notify;
 
 use Illuminate\Support\Facades\Facade;
-/**
- * @see \RiseTechApps\Notify\Skeleton\SkeletonClass
- */
 
+/**
+ * @see \RiseTechApps\Notify\NotifyQuery
+ */
 class NotifyFacade extends Facade
 {
-    /**
-     * Get the registered name of the component.
-     *
-     * @return string
-     */
-    protected static function getFacadeAccessor()
+    protected static function getFacadeAccessor(): string
     {
-        return Notify::class;
+        return NotifyQuery::class;
     }
 }

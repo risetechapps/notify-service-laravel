@@ -43,33 +43,47 @@ class NotifyChannelMail extends NotifyChannel
                 $data['webhook_url'] = config('notify.webhook');
             }
 
-            $response = Http::withHeaders(['X-API-KEY' => $this->apiKey])
+            $response = Http::withHeaders(['X-API-KEY' => $this->apiKey()])
                 ->acceptJson()
                 ->post("{$this->apiUrl}/api/v1/send/mail", $data);
 
             if ($response->failed()) {
-                throw new Exception('Error sending notification: ' . $response->body());
+                $errorBody = $response->json() ?: ['error' => $response->body()];
+
+                Event::dispatch(new NotifyFailedEvent($notifiable, $notification, new Exception($response->body()), 'mail'));
+
+                \Illuminate\Support\Facades\Log::error('Error by sending notification', [
+                    'notifiable' => $notifiable,
+                    'notification' => $notification,
+                    'response' => $errorBody,
+                ]);
+
+                return $errorBody;
             }
 
             $responseJson = $response->json();
 
             Event::dispatch(new NotifySentEvent($notifiable, $notification, $responseJson, 'mail'));
 
-            logglyInfo()->performedOn(self::class)
-                ->withProperties(['notifiable' => $notifiable, 'notification' => $notification, 'response' => $responseJson])
-                ->log("Notification sent");
+            \Illuminate\Support\Facades\Log::info('Notification sent', [
+                'notifiable' => $notifiable,
+                'notification' => $notification,
+                'response' => $responseJson,
+            ]);
 
             return $responseJson;
         } catch (\Exception $exception) {
             Event::dispatch(new NotifyFailedEvent($notifiable, $notification, $exception, 'mail'));
 
-            logglyError()
-                ->withProperties(['notifiable' => $notifiable, 'notification' => $notification])
-                ->exception($exception)->log("Error by sending notification");
+            \Illuminate\Support\Facades\Log::error('Error by sending notification', [
+                'notifiable' => $notifiable,
+                'notification' => $notification,
+                'exception' => $exception,
+            ]);
 
             report($exception);
 
-            return null;
+            return ['error' => $exception->getMessage()];
         }
     }
 }

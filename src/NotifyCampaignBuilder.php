@@ -169,7 +169,7 @@ class NotifyCampaignBuilder
      */
     protected function contactKey(): string
     {
-        return $this->channel === 'sms' ? 'phone' : 'email';
+        return $this->channel === 'sms' ? 'phone' : 'contact';
     }
 
     /**
@@ -354,9 +354,15 @@ class NotifyCampaignBuilder
      */
     public function send(): array
     {
+        $this->validate();
+
         $contacts   = $this->resolveContacts();
         $template   = $this->buildTemplate();
         $webhookUrl = $this->webhookUrl ?: config('notify.webhook');
+
+        if (empty($contacts)) {
+            throw new \InvalidArgumentException('At least one contact is required.');
+        }
 
         return $this->dispatch($this->buildPayload($contacts, $template, $webhookUrl));
     }
@@ -368,11 +374,36 @@ class NotifyCampaignBuilder
      */
     public function sendHtml(string $path): array
     {
+        if (!file_exists($path) || !is_readable($path)) {
+            throw new \InvalidArgumentException("HTML template file not found or unreadable: {$path}");
+        }
+
+        $this->validate();
+
         $contacts   = $this->resolveContacts();
         $template   = $this->buildTemplateHtml($path);
         $webhookUrl = $this->webhookUrl ?: config('notify.webhook');
 
+        if (empty($contacts)) {
+            throw new \InvalidArgumentException('At least one contact is required.');
+        }
+
         return $this->dispatch($this->buildPayload($contacts, $template, $webhookUrl));
+    }
+
+    protected function validate(): void
+    {
+        if (empty($this->name)) {
+            throw new \InvalidArgumentException('Campaign name is required.');
+        }
+
+        if ($this->channel === 'sms' && $this->smsContent === '') {
+            throw new \InvalidArgumentException('SMS content is required.');
+        }
+
+        if ($this->channel === 'email' && $this->emailSubject === '') {
+            throw new \InvalidArgumentException('Email subject is required.');
+        }
     }
 
     /**
@@ -388,14 +419,14 @@ class NotifyCampaignBuilder
                 ->post(Notify::BASE_URL . "/api/v1/send/campaigns/{$endpoint}", $payload);
 
             if ($response->failed()) {
-                throw new \Exception('Error creating campaign: ' . $response->body());
+                return $response->json() ?: ['error' => $response->body()];
             }
 
             return $response->json() ?? [];
         } catch (\Exception $e) {
             report($e);
 
-            return [];
+            return ['error' => $e->getMessage()];
         }
     }
 
@@ -403,39 +434,35 @@ class NotifyCampaignBuilder
 
     protected function resolveContacts(): array
     {
-        // Se veio de fromQuery(), processa agora em chunks
         if ($this->querySource !== null) {
-            $contacts = [];
             $contactKey = $this->contactKey();
 
-            $this->querySource->chunk(500, function ($rows) use (&$contacts, $contactKey) {
-                foreach ($rows as $row) {
-                    $value = data_get($row, $this->queryContactColumn);
-
-                    if (empty($value)) {
-                        continue;
-                    }
-
-                    $contact = [$contactKey => $value];
-
-                    if ($this->queryNameColumn) {
-                        $contact['name'] = data_get($row, $this->queryNameColumn);
-                    }
-
-                    $extra = $this->extractExtraData($row, $this->queryExtraColumns);
-
-                    if ($extra !== []) {
-                        $contact['extra_data'] = $extra;
-                    }
-
-                    $contacts[] = $contact;
-                }
-            });
-
-            return $contacts;
+            return $this->querySource
+                ->lazy(500)
+                ->filter(fn($row) => !empty(data_get($row, $this->queryContactColumn)))
+                ->map(fn($row) => $this->buildContactFromRow($row, $contactKey))
+                ->values()
+                ->all();
         }
 
         return $this->contacts;
+    }
+
+    protected function buildContactFromRow(mixed $row, string $contactKey): array
+    {
+        $contact = [$contactKey => data_get($row, $this->queryContactColumn)];
+
+        if ($this->queryNameColumn) {
+            $contact['name'] = data_get($row, $this->queryNameColumn);
+        }
+
+        $extra = $this->extractExtraData($row, $this->queryExtraColumns);
+
+        if ($extra !== []) {
+            $contact['extra_data'] = $extra;
+        }
+
+        return $contact;
     }
 
     protected function buildTemplate(): array

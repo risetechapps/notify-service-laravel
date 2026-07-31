@@ -22,6 +22,7 @@ class NotifyServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__ . '/../config/config.php', 'notify');
 
         $this->app->singleton(Notify::class, fn() => new Notify());
+        $this->app->singleton(NotifyQuery::class, fn() => new NotifyQuery());
     }
 
     protected function registerChannels(): void

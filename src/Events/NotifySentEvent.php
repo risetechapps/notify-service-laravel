@@ -9,13 +9,10 @@ class NotifySentEvent
 {
     use Dispatchable;
 
-    public $notification;
-    public $channel;
-
-    public function __construct(public $notifiable, Notification $notification, public $response, string $channel)
-    {
-        $this->notification = $notification;
-        $this->response = $response;
-        $this->channel = $channel;
-    }
+    public function __construct(
+        public $notifiable,
+        public Notification $notification,
+        public $response,
+        public string $channel,
+    ) {}
 }
