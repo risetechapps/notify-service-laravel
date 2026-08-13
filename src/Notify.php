@@ -11,5 +11,4 @@ class Notify
      * Não exposto na config para impedir sobrescrita pelo usuário final.
      */
     public const BASE_URL = 'https://notifykit.app.br';
-//    public const BASE_URL = 'https://notify.risetech.dev.br';
 }
