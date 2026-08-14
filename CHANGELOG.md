@@ -4,6 +4,45 @@ Todas as mudanças notáveis para o pacote `risetechapps/notify-service-for-lara
 
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), e este projeto adere ao [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-27
+
+### Segurança
+
+- **Validação de assinatura nos webhooks recebidos**: novo middleware `VerifyNotifySignature`, aplicado automaticamente às rotas de webhook. Valida o header `X-Notify-Signature` (`t=<timestamp>,v1=<hmac>`) recalculando o HMAC-SHA256 de `{timestamp}.{corpo bruto}` com `notify.webhook_secret`, comparando via `hash_equals()` e recusando payloads fora da janela anti-replay (`notify.webhook_tolerance`, default 300s). Antes disso o endpoint era público — qualquer um podia forjar um callback e disparar os listeners da aplicação.
+  - **Breaking**: defina `NOTIFY_SERVICE_WEBHOOK_SECRET` ou os callbacks passam a retornar `403`. Para desligar a validação, use `notify.webhook_verify=false`.
+  - Alias `notify.signature` registrado para quem declara as rotas manualmente.
+  - Aceita múltiplos `v1` no mesmo header, permitindo rotação de segredo sem downtime.
+
+### Adicionado
+
+- **Chaves de config das rotas de webhook**: `notify.routes`, `notify.routes_prefix` e `notify.routes_middleware` agora existem em `config/config.php` — eram lidas pelo ServiceProvider mas não estavam publicadas.
+
+- **Helper `notifyQuery()`**: Nova função global que retorna `ServerQuery`, alternativa mais concisa a `NotifyQuery::server()`.
+- **Preview de e-mail**: Métodos `preview()` e `previewLink()` em `ServerChannelQuery` para visualizar o HTML do e-mail enviado via API do servidor.
+- **Validação de campos obrigatórios**: `send()` e `sendHtml()` do `NotifyCampaignBuilder` agora validam name, content/subject e contatos antes do HTTP call, lançando `\InvalidArgumentException`.
+- **`NotifyCredentials::clicksend()`**: Fábrica do driver `clicksend` (`username`, `api_key`, `from`), que existia no contrato do servidor mas não tinha helper.
+- **`NotifyCredentials::fcmFile()`**: Lê o Service Account de um arquivo local e embute o conteúdo em `credentials_json`.
+
+### Alterado
+
+- **`scheduled_at` em campanhas**: Agora é convertido automaticamente para ISO 8601 com timezone (`config('app.timezone')`) antes de enviar ao servidor.
+- **Tratamento de erros**: Canais e `NotifyCampaignBuilder` agora retornam o body de erro da API em vez de `null`/`[]`. Exceções reais (timeout, etc.) retornam `['error' => mensagem]`.
+- **`logglyInfo()`/`logglyError()` removidos**: Substituídos por `\Illuminate\Support\Facades\Log::info()` e `Log::error()` em todos os 10 canais.
+- **`NotifyFacade`**: Agora aponta para `NotifyQuery::class` em vez de `Notify::class` (que só possui constantes).
+- **`resolveContacts()`**: Substituído `chunk(500)` por `lazy(500)` para melhor eficiência de memória durante iteração.
+- **`sendHtml()`**: Agora valida se o arquivo existe e é legível antes de ler, lançando exceção em vez de enviar `false`.
+- **`ServerDriverConfig::credentialsJson()`**: Lança `\InvalidArgumentException` se a string JSON for inválida, em vez de passar string crua.
+- **`NotifyCredentials::fcm()`**: Assinatura alterada para `fcm(array|string $serviceAccount)`. Antes montava `project_id` + `credentials_file` (caminho), que o servidor não aceita mais — agora envia o Service Account inteiro em `credentials_json`, alinhado ao `ServerDriverConfig`. **Breaking** para quem chamava `fcm($projectId, $path)`: troque por `fcmFile($path)`.
+
+### Removido
+
+- **`NotifyCredentials::zenvia()`**: O driver `zenvia` foi removido do servidor; o helper montava credenciais que hoje resultam em erro de validação. **Breaking** para quem ainda o usava — migre para `mobizon`, `clicksend` ou `twilio`.
+
+### Documentação
+
+- **README**: documentados o envio multicanal (`NotifyQuery::multi()`), as credenciais inline (`NotifyCredentials`), o template HTML próprio em campanhas (`sendHtml()`), o preview de e-mail (`preview()`/`previewLink()`), o helper `notifyQuery()`, o filtro `untagged()`, o retorno dos canais em caso de erro, as validações que lançam `\InvalidArgumentException` e a conversão de `scheduledAt` para ISO 8601 com timezone. Índice atualizado.
+- **`NotifyCredentials`**: docblock corrigido — os exemplos mostravam `->credentials()` em classes de mensagem individuais, onde o método não existe (lá o correto é `->configId()`). Também documenta que o driver `smtp` não declara `credential_fields` no contrato atual.
+
 ## [1.2.0] - 2026-03-17
 - Implementado envio de arquivo html nas campanhas.
 
