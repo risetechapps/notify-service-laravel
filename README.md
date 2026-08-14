@@ -1792,8 +1792,9 @@ Fábricas disponíveis:
 
 | Canal | Chamada |
 |---|---|
-| SMS | `NotifyCredentials::mobizon($key, $apiServer = 'api.mobizon.com.br')` · `::twilio($sid, $token, $from)` |
-| Email | `::smtp($host, $user, $pass, $port = 587, $encryption = 'tls')` · `::mailgun($domain, $secret, $endpoint)` · `::resend($apiKey)` · `::sendgrid($apiKey)` · `::ses($key, $secret, $region)` · `::postmark($token)` |
+| SMS | `NotifyCredentials::mobizon($key, $apiServer = 'api.mobizon.com.br')` · `::clicksend($username, $apiKey, $from)` · `::twilio($sid, $token, $from)` |
+| Email | `::mailgun($domain, $secret, $endpoint)` · `::resend($apiKey)` · `::sendgrid($apiKey)` · `::ses($key, $secret, $region)` · `::postmark($token)` · `::smtp($host, $user, $pass, $port = 587, $encryption = 'tls')` |
+| Push | `::fcm(array\|string $serviceAccount)` · `::fcmFile($path)` — o Service Account vai inteiro em `credentials_json` |
 | APNS | `::apns($keyPath, $keyId, $teamId, $bundleId, $production = false)` |
 | Telegram | `::telegram($botToken)` |
 | Slack | `::slack($botToken, $webhookUrl = null, $defaultChannel = '#general')` |
@@ -1806,11 +1807,17 @@ Fábricas disponíveis:
 > (`NotifySms`, `NotifyMail`, …) **não** aceitam credenciais inline — nelas use
 > `->configId()`.
 
-> ⚠️ Duas fábricas estão fora do contrato atual do servidor e não devem ser usadas:
-> `NotifyCredentials::zenvia()` (driver removido) e `NotifyCredentials::fcm()` (envia
-> `project_id` + `credentials_file`, mas o servidor hoje espera `credentials_json` com o
-> objeto do Service Account). Para push, crie a config com
-> `->config()->driver('fcm')->credentialsFile(...)` — veja [Criar — Push / APNS](#criar--push--apns).
+```php
+// Push: o JSON do Service Account é lido e embutido — o servidor nunca recebe caminho
+->credentials(NotifyCredentials::fcmFile(storage_path('app/google-services.json')))
+
+// ou inline, com o array/string JSON que você já tem em mãos
+->credentials(NotifyCredentials::fcm($serviceAccountArray))
+```
+
+> ⚠️ `::smtp()` monta `host/port/encryption/username/password`, mas no contrato atual o
+> driver `smtp` não declara `credential_fields` — o servidor usa o `config/mail.php` dele.
+> Só use se o seu servidor aceitar SMTP inline; caso contrário prefira ses/mailgun/resend.
 
 ### Usando uma config específica no envio
 
