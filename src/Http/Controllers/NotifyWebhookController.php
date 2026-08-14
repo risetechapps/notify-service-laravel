@@ -14,10 +14,14 @@ use RiseTechApps\Notify\Events\NotifyWebhookEvent;
  * eventos Laravel. O pacote não persiste nada localmente — escute os eventos
  * (NotifyWebhookEvent / NotifyCampaignWebhookEvent) para reagir.
  *
- * Registre as rotas no seu routes/api.php (ou habilite notify.routes no config):
+ * As rotas são registradas automaticamente com notify.routes = true, já protegidas
+ * pelo middleware de assinatura HMAC (VerifyNotifySignature). Para registrar
+ * manualmente, aplique o alias 'notify.signature':
  *
- *   Route::post('/notify/webhook',          [NotifyWebhookController::class, 'notification']);
- *   Route::post('/notify/webhook/campaign', [NotifyWebhookController::class, 'campaign']);
+ *   Route::post('/notify/webhook',          [NotifyWebhookController::class, 'notification'])
+ *       ->middleware('notify.signature');
+ *   Route::post('/notify/webhook/campaign', [NotifyWebhookController::class, 'campaign'])
+ *       ->middleware('notify.signature');
  *
  * Formato esperado para notificação individual:
  * {

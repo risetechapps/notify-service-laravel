@@ -6,6 +6,7 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Route;
 use RiseTechApps\Notify\Channel;
+use RiseTechApps\Notify\Http\Middleware\VerifyNotifySignature;
 
 class NotifyServiceProvider extends ServiceProvider
 {
@@ -41,13 +42,23 @@ class NotifyServiceProvider extends ServiceProvider
 
     protected function registerRoutes(): void
     {
+        // Alias para quem registra as rotas manualmente:
+        // Route::post(...)->middleware('notify.signature');
+        $this->app['router']->aliasMiddleware('notify.signature', VerifyNotifySignature::class);
+
         if (!config('notify.routes', true)) {
             return;
         }
 
+        $middleware = (array)config('notify.routes_middleware', ['api']);
+
+        // A validação de assinatura é sempre aplicada; ela mesma se desliga
+        // quando notify.webhook_verify é false.
+        $middleware[] = VerifyNotifySignature::class;
+
         Route::group([
             'prefix'     => config('notify.routes_prefix', 'notify'),
-            'middleware' => config('notify.routes_middleware', ['api']),
+            'middleware' => $middleware,
             'as'         => 'notify.',
         ], function () {
             $this->loadRoutesFrom(__DIR__ . '/../routes/api.php');

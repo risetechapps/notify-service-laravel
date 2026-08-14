@@ -5,7 +5,42 @@
  */
 return [
     'key' => env('NOTIFY_SERVICE_KEY', ""),
+
+    // URL de callback informada ao servidor nos envios (para onde ELE manda o status).
     'webhook' => env('NOTIFY_SERVICE_WEBHOOK', ""),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Recebimento dos callbacks do servidor
+    |--------------------------------------------------------------------------
+    |
+    | O pacote registra POST {prefix}/webhook e POST {prefix}/webhook/campaign,
+    | que apenas disparam NotifyWebhookEvent / NotifyCampaignWebhookEvent.
+    |
+    */
+
+    // Registra as rotas de webhook automaticamente. Desligue se preferir declarar
+    // as rotas manualmente no seu routes/api.php apontando para NotifyWebhookController.
+    'routes' => env('NOTIFY_SERVICE_ROUTES', true),
+
+    // Prefixo das rotas: resulta em /notify/webhook e /notify/webhook/campaign.
+    'routes_prefix' => env('NOTIFY_SERVICE_ROUTES_PREFIX', 'notify'),
+
+    // Middlewares do grupo. A validação de assinatura é sempre aplicada por cima
+    // deste array (controlada por 'webhook_verify'), não precisa ser listada aqui.
+    'routes_middleware' => ['api'],
+
+    // Segredo compartilhado usado para validar o header X-Notify-Signature.
+    // Obtido no painel do NotifyKit. Sem ele os callbacks são recusados com 403.
+    'webhook_secret' => env('NOTIFY_SERVICE_WEBHOOK_SECRET', ""),
+
+    // Valida a assinatura HMAC dos callbacks recebidos. Só desligue em ambiente
+    // local — com false qualquer um pode forjar um callback e disparar seus listeners.
+    'webhook_verify' => env('NOTIFY_SERVICE_WEBHOOK_VERIFY', true),
+
+    // Janela anti-replay em segundos: recusa callbacks cujo timestamp assinado
+    // esteja fora deste intervalo. 0 desliga a checagem de tempo.
+    'webhook_tolerance' => env('NOTIFY_SERVICE_WEBHOOK_TOLERANCE', 300),
 
     'sms' => [
         // config_id default (UUID ou label, ex.: "Twilio Principal") usado quando a
