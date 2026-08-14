@@ -6,31 +6,30 @@ namespace RiseTechApps\Notify;
  * Helper para montar credenciais inline por driver.
  *
  * Use quando quiser sobrescrever a configuração padrão do servidor
- * em um envio específico, sem precisar criar uma config salva (config_id).
+ * em um disparo específico, sem precisar criar uma config salva (config_id).
  * O servidor usa essas credenciais diretamente, sem buscar no banco.
+ *
+ * Só o NotifyCampaignBuilder aceita credenciais inline via ->credentials().
+ * Nas notificações individuais (NotifySms, NotifyMail, ...) use ->configId().
  *
  * ──────────────────────────────────────────────────────────────────────────────
  * Exemplos:
  * ──────────────────────────────────────────────────────────────────────────────
  *
- *   // SMS via Twilio específico
- *   (new NotifySms)
- *       ->to('5521999887766')
- *       ->content('Mensagem')
- *       ->credentials(NotifyCredentials::twilio('ACxxx', 'auth-token', '+15551234567'));
- *
- *   // Email via Resend
- *   (new NotifyMail)
- *       ->to('user@email.com', 'User')
- *       ->subject('Assunto')
- *       ->credentials(NotifyCredentials::resend('re_xxxxxxxxxxxx'));
- *
- *   // Campanha SMS com credenciais específicas
+ *   // Campanha SMS via Twilio específico
  *   NotifyCampaignBuilder::sms()
  *       ->name('Promo')
- *       ->content('Olá {{name}}!')
+ *       ->content('Olá {name}!')
  *       ->contacts([...])
- *       ->credentials(NotifyCredentials::zenvia('api-token', 'MeuApp'))
+ *       ->credentials(NotifyCredentials::twilio('ACxxx', 'auth-token', '+15551234567'))
+ *       ->send();
+ *
+ *   // Campanha de email via Resend
+ *   NotifyCampaignBuilder::email()
+ *       ->name('Newsletter')
+ *       ->subject('Novidades')
+ *       ->contacts([...])
+ *       ->credentials(NotifyCredentials::resend('re_xxxxxxxxxxxx'))
  *       ->send();
  */
 class NotifyCredentials
@@ -57,18 +56,20 @@ class NotifyCredentials
     }
 
     /**
-     * Zenvia SMS.
+     * ClickSend SMS.
      *
-     * @param string $apiToken  API Token da Zenvia
-     * @param string $senderId  Sender ID / nome do remetente
+     * @param string $username Usuário da conta ClickSend
+     * @param string $apiKey   API Key
+     * @param string $from     Remetente (número ou alfanumérico)
      */
-    public static function zenvia(string $apiToken, string $senderId): array
+    public static function clicksend(string $username, string $apiKey, string $from): array
     {
         return [
-            'driver'      => 'zenvia',
+            'driver'      => 'clicksend',
             'credentials' => [
-                'api_token' => $apiToken,
-                'sender_id' => $senderId,
+                'username' => $username,
+                'api_key'  => $apiKey,
+                'from'     => $from,
             ],
         ];
     }
@@ -94,6 +95,10 @@ class NotifyCredentials
 
     /**
      * SMTP.
+     *
+     * Atenção: no contrato atual o driver `smtp` não declara `credential_fields` —
+     * o servidor usa o próprio `config/mail.php` dele. Só use este helper se o seu
+     * servidor aceitar SMTP inline; caso contrário prefira ses/mailgun/resend/etc.
      *
      * @param string $host
      * @param string $username
@@ -208,18 +213,55 @@ class NotifyCredentials
     /**
      * Firebase Cloud Messaging (FCM).
      *
-     * @param string $projectId       ID do projeto no Firebase
-     * @param string $credentialsFile Caminho absoluto para o JSON de service account no servidor
+     * O servidor espera o Service Account inteiro em `credentials_json` — não o caminho
+     * de um arquivo, que não existe na máquina dele.
+     *
+     * @param array|string $serviceAccount Conteúdo do Service Account: array já decodificado
+     *                                     ou a string JSON crua.
+     *
+     * @throws \InvalidArgumentException Se a string JSON for inválida.
      */
-    public static function fcm(string $projectId, string $credentialsFile): array
+    public static function fcm(array|string $serviceAccount): array
     {
+        if (is_string($serviceAccount)) {
+            $decoded = json_decode($serviceAccount, true);
+
+            if (!is_array($decoded)) {
+                throw new \InvalidArgumentException('fcm(): invalid JSON string provided');
+            }
+
+            $serviceAccount = $decoded;
+        }
+
         return [
             'driver'      => 'fcm',
             'credentials' => [
-                'project_id'       => $projectId,
-                'credentials_file' => $credentialsFile,
+                'credentials_json' => $serviceAccount,
             ],
         ];
+    }
+
+    /**
+     * FCM lendo o Service Account de um arquivo local — o conteúdo é embutido em
+     * `credentials_json`. Ex.: NotifyCredentials::fcmFile(storage_path('app/fcm.json')).
+     *
+     * @throws \InvalidArgumentException Se o arquivo não existir/não for legível ou não for JSON válido.
+     */
+    public static function fcmFile(string $path): array
+    {
+        $contents = @file_get_contents($path);
+
+        if ($contents === false) {
+            throw new \InvalidArgumentException("Service Account file not found or unreadable: {$path}");
+        }
+
+        $json = json_decode($contents, true);
+
+        if (!is_array($json)) {
+            throw new \InvalidArgumentException("Service Account file is not valid JSON: {$path}");
+        }
+
+        return self::fcm($json);
     }
 
     /**
