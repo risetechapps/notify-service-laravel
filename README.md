@@ -24,14 +24,20 @@ Client package para o servidor [NotifyKit](https://notifykit.app.br). Integra **
   - [Teams](#teams)
   - [WebSocket](#websocket)
   - [Webhook](#webhook)
+- [Envio multicanal](#envio-multicanal)
+- [Credenciais por driver](#credenciais-por-driver)
+  - [Credenciais inline](#credenciais-inline)
 - [Campanhas em massa](#campanhas-em-massa)
   - [Campanha SMS](#campanha-sms)
   - [Campanha Email](#campanha-email)
+  - [Template HTML próprio](#template-html-próprio)
+  - [Validações antes do disparo](#validações-antes-do-disparo)
   - [Fontes de contatos](#fontes-de-contatos)
 - [Estado e rastreamento](#estado-e-rastreamento)
 - [Webhook receiver](#webhook-receiver)
 - [Consultas de status](#consultas-de-status)
 - [Eventos Laravel](#eventos-laravel)
+- [Configurações de driver](#configurações-de-driver)
 
 ---
 
@@ -62,6 +68,9 @@ Adicione as variáveis ao seu `.env`:
 NOTIFY_SERVICE_KEY=sua-api-key
 NOTIFY_SERVICE_WEBHOOK=https://sua-app.com/notify/webhook
 
+# Segredo usado para validar a assinatura dos callbacks recebidos (obrigatório)
+NOTIFY_SERVICE_WEBHOOK_SECRET=seu-segredo
+
 # Rotas automáticas de webhook (opcional)
 NOTIFY_SERVICE_ROUTES=true
 NOTIFY_SERVICE_ROUTES_PREFIX=notify
@@ -78,6 +87,11 @@ return [
     'routes'            => env('NOTIFY_SERVICE_ROUTES', true),
     'routes_prefix'     => env('NOTIFY_SERVICE_ROUTES_PREFIX', 'notify'),
     'routes_middleware' => ['api'],
+
+    // Validação de assinatura dos callbacks recebidos
+    'webhook_secret'    => env('NOTIFY_SERVICE_WEBHOOK_SECRET', ''),
+    'webhook_verify'    => env('NOTIFY_SERVICE_WEBHOOK_VERIFY', true),
+    'webhook_tolerance' => env('NOTIFY_SERVICE_WEBHOOK_TOLERANCE', 300),
 ];
 ```
 
@@ -88,14 +102,21 @@ POST /notify/webhook           → recebe status de notificações individuais
 POST /notify/webhook/campaign  → recebe status de campanhas
 ```
 
-Para registrar manualmente (defina `routes = false`):
+Ambas já vêm protegidas pela validação de assinatura HMAC — veja
+[Webhook receiver](#webhook-receiver).
+
+Para registrar manualmente (defina `routes = false`), aplique o middleware
+`notify.signature`:
 
 ```php
 // routes/api.php
 use RiseTechApps\Notify\Http\Controllers\NotifyWebhookController;
 
-Route::post('/notify/webhook',          [NotifyWebhookController::class, 'notification']);
-Route::post('/notify/webhook/campaign', [NotifyWebhookController::class, 'campaign']);
+Route::post('/notify/webhook',          [NotifyWebhookController::class, 'notification'])
+    ->middleware('notify.signature');
+
+Route::post('/notify/webhook/campaign', [NotifyWebhookController::class, 'campaign'])
+    ->middleware('notify.signature');
 ```
 
 ---
@@ -123,6 +144,13 @@ Todas as notificações usam o sistema de notificações nativo do Laravel. Crie
 
 O envio faz um POST ao servidor; **nada é persistido localmente**. Acompanhe o status
 pelos [eventos](#eventos-laravel) e consulte o histórico via `NotifyQuery::server()`.
+
+**Retorno do canal.** Em sucesso, o canal devolve o JSON do servidor (`202` com
+`notification_id`). Em falha HTTP, devolve o **corpo de erro da API** (ex.: `errors` de
+uma validação `422`); se a exceção for de transporte (timeout, DNS), devolve
+`['error' => 'mensagem']`. Só retorna `null` quando não há destino
+(`routeNotificationFor()` vazio) ou quando o método `toNotifyX()` não devolve a classe
+de mensagem esperada. Toda falha também dispara `NotifyFailedEvent` e vai para o log.
 
 ---
 
@@ -1666,6 +1694,46 @@ NotifyQuery::server()->webhook()->config()
 
 ---
 
+## Envio multicanal
+
+Dispara vários canais em **uma única requisição** (`POST /api/v1/send/multi`), sem passar
+pelo sistema de notificações do Laravel. Útil para alertas que precisam sair por SMS,
+e-mail e push ao mesmo tempo.
+
+```php
+use RiseTechApps\Notify\NotifyQuery;
+
+$result = NotifyQuery::multi([
+    ['channel' => 'sms',   'data' => ['to' => '5521999887766', 'content' => 'Servidor fora do ar']],
+    ['channel' => 'email', 'data' => ['email' => 'ops@app.com', 'name' => 'Ops', 'subject' => 'Alerta']],
+    ['channel' => 'telegram', 'data' => ['chat_id' => '-1001234567890', 'message' => 'Alerta']],
+], webhookUrl: 'https://sua-app.com/notify/webhook')->send();
+```
+
+Cada item tem `channel` (`sms`, `email`, `push`, `apns`, `telegram`, `slack`, `discord`,
+`teams`, `websocket`, `webhook`) e `data` com o payload daquele canal. Para não montar
+`data` na mão, reaproveite a classe de mensagem:
+
+```php
+use RiseTechApps\Notify\Message\NotifySms;
+
+$sms = (new NotifySms)->to('5521999887766')->content('Alerta')->tag('ops');
+
+NotifyQuery::multi([
+    ['channel' => 'sms', 'data' => $sms->toArray()],
+])->send();
+```
+
+O segundo argumento (`webhookUrl`) é o callback global do disparo; se omitido, cada canal
+segue o `webhook_url` que estiver no seu próprio `data` ou o padrão do servidor.
+O retorno é o array cru da resposta — ou `['error' => ...]` em falha, igual aos canais.
+
+> `NotifyQuery::multi()` **não** dispara os eventos `NotifySendingEvent`/`NotifySentEvent`
+> (esses são do fluxo de notificação do Laravel). Acompanhe o resultado pelo retorno e
+> pelos callbacks de webhook.
+
+---
+
 ## Credenciais por driver
 
 > Para criar/atualizar/remover configurações, use `NotifyQuery::server()->{canal}()->config()`
@@ -1694,6 +1762,55 @@ NotifyQuery::server()->webhook()->config()
 | `teams` | `webhook` | `webhook_url`, `theme_color` |
 | `websocket` | `pusher` | `app_id`, `key`, `secret`, `cluster`, `host`, `port`, `scheme` |
 | `webhook` | `generic` | `default_url`, `timeout`, `auth_type`, `auth_token`, `auth_user`, `auth_password`, `api_key_header`, `secret`, `inject_metadata` |
+
+### Credenciais inline
+
+Alternativa ao `config_id`: mandar as credenciais **dentro do próprio disparo**, sem criar
+uma config salva no servidor. A classe `NotifyCredentials` monta o array
+`['driver' => ..., 'credentials' => [...]]` já com as chaves que o servidor espera.
+
+```php
+use RiseTechApps\Notify\NotifyCampaignBuilder;
+use RiseTechApps\Notify\NotifyCredentials;
+
+NotifyCampaignBuilder::sms()
+    ->name('Promo')
+    ->content('Olá {name}!')
+    ->contacts([...])
+    ->credentials(NotifyCredentials::twilio('ACxxx', 'auth-token', '+15551234567'))
+    ->send();
+
+NotifyCampaignBuilder::email()
+    ->name('Newsletter')
+    ->subject('Novidades')
+    ->contacts([...])
+    ->credentials(NotifyCredentials::resend('re_xxxxxxxxxxxx'))
+    ->send();
+```
+
+Fábricas disponíveis:
+
+| Canal | Chamada |
+|---|---|
+| SMS | `NotifyCredentials::mobizon($key, $apiServer = 'api.mobizon.com.br')` · `::twilio($sid, $token, $from)` |
+| Email | `::smtp($host, $user, $pass, $port = 587, $encryption = 'tls')` · `::mailgun($domain, $secret, $endpoint)` · `::resend($apiKey)` · `::sendgrid($apiKey)` · `::ses($key, $secret, $region)` · `::postmark($token)` |
+| APNS | `::apns($keyPath, $keyId, $teamId, $bundleId, $production = false)` |
+| Telegram | `::telegram($botToken)` |
+| Slack | `::slack($botToken, $webhookUrl = null, $defaultChannel = '#general')` |
+| Discord | `::discord($webhookUrl, $username = null, $avatarUrl = null)` |
+| Teams | `::teams($webhookUrl, $themeColor = '0076D7')` |
+| WebSocket | `::pusher($appId, $key, $secret, $cluster, $host, $port, $scheme)` |
+
+> ⚠️ `->credentials()` existe **apenas** no `NotifyCampaignBuilder` (e no builder de
+> [configurações de driver](#configurações-de-driver)). As classes de mensagem individuais
+> (`NotifySms`, `NotifyMail`, …) **não** aceitam credenciais inline — nelas use
+> `->configId()`.
+
+> ⚠️ Duas fábricas estão fora do contrato atual do servidor e não devem ser usadas:
+> `NotifyCredentials::zenvia()` (driver removido) e `NotifyCredentials::fcm()` (envia
+> `project_id` + `credentials_file`, mas o servidor hoje espera `credentials_json` com o
+> objeto do Service Account). Para push, crie a config com
+> `->config()->driver('fcm')->credentialsFile(...)` — veja [Criar — Push / APNS](#criar--push--apns).
 
 ### Usando uma config específica no envio
 
@@ -1758,9 +1875,14 @@ $campaign = NotifyCampaignBuilder::sms()
 | `->webhookUrl(string)` | URL de callback de progresso |
 | `->ratePerMinute(int)` | Envios por minuto. Min: 1, Máx: 600. Default: 60 |
 | `->scheduledAt(string)` | Agendamento: `'2026-06-01 08:00:00'` |
+| `->credentials(array)` | [Credenciais inline](#credenciais-inline) via `NotifyCredentials` |
 | `->send()` | Envia e retorna o array da resposta do servidor |
 
 > O servidor não aceita mais `from`/sender ID em SMS — o remetente vem da credencial (config).
+
+> `->scheduledAt()` é convertido para ISO 8601 **com offset** usando `config('app.timezone')`
+> antes de subir (`'2026-06-01 08:00:00'` → `2026-06-01T08:00:00-03:00`). Passe o horário no
+> fuso da sua aplicação; o servidor recebe o offset explícito e não precisa adivinhar.
 
 ---
 
@@ -1809,8 +1931,54 @@ $campaign = NotifyCampaignBuilder::email()
 | `->configId(string)` | UUID da config de email |
 | `->webhookUrl(string)` | URL de callback |
 | `->ratePerMinute(int)` | Envios por minuto. Default: 60 |
-| `->scheduledAt(string)` | Agendamento futuro |
-| `->send()` | Envia e retorna o array da resposta do servidor |
+| `->scheduledAt(string)` | Agendamento futuro (ISO 8601 com o offset de `config('app.timezone')`) |
+| `->credentials(array)` | [Credenciais inline](#credenciais-inline) via `NotifyCredentials` |
+| `->send()` | Envia com o template do pacote e retorna o array da resposta |
+| `->sendHtml(string $path)` | Envia usando um [HTML próprio](#template-html-próprio) |
+
+---
+
+### Template HTML próprio
+
+Em vez do template do pacote, você pode enviar o **seu** HTML: use `sendHtml()` com o
+caminho do arquivo. O conteúdo é lido e sobe no campo `html_raw`.
+
+```php
+NotifyCampaignBuilder::email()
+    ->name('Black Friday')
+    ->subject('50% OFF só hoje')
+    ->tag('bf')
+    ->contacts([
+        ['email' => 'joao@email.com', 'name' => 'João', 'extra_data' => ['cupom' => 'BF50']],
+    ])
+    ->sendHtml(resource_path('mail/black-friday.html'));
+```
+
+Os placeholders continuam valendo dentro do HTML — `{{name}}`, `{{email}}` e as chaves de
+`extra_data`. Métodos de montagem do template do pacote (`->line()`, `->action()`,
+`->addTable()`, `->theme()`, …) são ignorados nesse modo; `subject`, `subject_message` e
+`app_name` continuam sendo enviados.
+
+Se o arquivo não existir ou não for legível, `sendHtml()` lança
+`\InvalidArgumentException` — nada é enviado.
+
+---
+
+### Validações antes do disparo
+
+`send()` e `sendHtml()` validam localmente e lançam `\InvalidArgumentException` **antes**
+de qualquer chamada HTTP:
+
+| Situação | Mensagem |
+|---|---|
+| Sem `->name()` | `Campaign name is required.` |
+| Campanha SMS sem `->content()` | `SMS content is required.` |
+| Campanha Email sem `->subject()` | `Email subject is required.` |
+| Nenhum contato resolvido | `At least one contact is required.` |
+| `sendHtml()` com caminho inválido | `HTML template file not found or unreadable: {path}` |
+
+Erros vindos do servidor **não** viram exceção: o retorno é o corpo de erro da API, ou
+`['error' => 'mensagem']` em falha de transporte.
 
 ---
 
@@ -1863,6 +2031,37 @@ Para acompanhar uma notificação você tem dois caminhos:
 O package inclui `NotifyWebhookController` que recebe os callbacks do servidor e os
 **repassa como eventos Laravel** — ele não grava nada. Escute os eventos para reagir.
 
+### Validação de assinatura
+
+O servidor assina cada callback com HMAC-SHA256 e envia o resultado no header:
+
+```
+X-Notify-Signature: t=1750000000,v1=9f86d081884c7d65...
+```
+
+O material assinado é `{timestamp}.{corpo bruto}`. O middleware `VerifyNotifySignature`
+valida isso automaticamente antes de o controller rodar:
+
+1. recalcula o HMAC sobre `{t}.{corpo bruto}` usando `notify.webhook_secret`;
+2. compara com `hash_equals()` (comparação em tempo constante);
+3. recusa payloads cujo `t` esteja fora da janela de `notify.webhook_tolerance`
+   segundos (anti-replay, default 300).
+
+Qualquer falha retorna `403` e o controller não é executado.
+
+| Config | Default | Descrição |
+|---|---|---|
+| `notify.webhook_secret` | `''` | Segredo compartilhado, obtido no painel do NotifyKit. **Sem ele todos os callbacks são recusados com 403.** |
+| `notify.webhook_verify` | `true` | Liga/desliga a validação. Só desligue em ambiente local. |
+| `notify.webhook_tolerance` | `300` | Janela anti-replay em segundos. `0` desliga a checagem de tempo. |
+
+O header aceita mais de um `v1` (`t=...,v1=abc...,v1=def...`) — útil durante rotação
+de segredo: basta um deles conferir.
+
+> ⚠️ A validação usa o **corpo bruto** (`$request->getContent()`). Se você escrever a
+> sua própria verificação, nunca use `json_encode($request->all())`: a ordem das chaves
+> e o escape de `/` e de unicode mudam os bytes e a assinatura nunca vai conferir.
+
 **Notificação individual** → dispara `NotifyWebhookEvent`. Payload típico recebido:
 ```json
 {
@@ -1911,6 +2110,17 @@ public function handle(NotifyWebhookEvent $event): void
 ## Consultas de status
 
 Todas as consultas vão ao servidor (HTTP com a `NOTIFY_SERVICE_KEY`), via `NotifyQuery::server()`.
+
+O helper global `notifyQuery()` é um atalho equivalente — use o que preferir:
+
+```php
+NotifyQuery::server()->sms()->get();
+notifyQuery()->sms()->get();          // idêntico
+```
+
+**Filtros comuns a todos os canais:** `->tag(string|array)`, `->untagged(bool)`,
+`->status(string)`, `->perPage(int)` (1–100, default 20) e `->page(int)`.
+`->untagged()` pede explicitamente os registros **sem** tag.
 
 ### SMS (endpoints dedicados)
 
@@ -1970,6 +2180,24 @@ $res = NotifyQuery::server()->mail('server-uuid')->cancel();
 
 > Mesmo comportamento do SMS no filtro de tag: **sem `tag()` a listagem traz só os
 > e-mails SEM tag**. Informe `->tag(...)` para trazer os que contêm a(s) tag(s).
+
+**Preview do e-mail enviado** — recupera o HTML já renderizado pelo servidor (com os
+placeholders resolvidos), útil para exibir "ver no navegador" ou depurar template:
+
+```php
+// HTML cru (string) — o padrão
+$html = NotifyQuery::server()->mail('server-uuid')->preview();
+
+// Metadados + html em JSON
+$data = NotifyQuery::server()->mail('server-uuid')->preview('json');
+
+// Link temporário hospedado no servidor
+$link = NotifyQuery::server()->mail('server-uuid')->previewLink();
+// array cru da resposta do servidor, com a URL do preview
+```
+
+`preview()` devolve `string` no modo HTML e `array` no modo `json`. Em falha (ou sem id
+informado) os dois métodos devolvem `['error' => 'mensagem']` — cheque antes de renderizar.
 
 ### Push (endpoints dedicados)
 
