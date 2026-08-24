@@ -52,12 +52,6 @@ class NotifyChannelTeams extends NotifyChannel
 
             Event::dispatch(new NotifySentEvent($notifiable, $notification, $responseJson, 'teams'));
 
-            \Illuminate\Support\Facades\Log::info('Notification sent', [
-                'notifiable' => $notifiable,
-                'notification' => $notification,
-                'response' => $responseJson,
-            ]);
-
             return $responseJson;
         } catch (\Exception $exception) {
             Event::dispatch(new NotifyFailedEvent($notifiable, $notification, $exception, 'teams'));
